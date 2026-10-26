@@ -42,9 +42,12 @@ That puts a `teambot` command on your path. Or run it from the
 checkout without installing:
 
 ```sh
-chmod +x teambot.sh
-./teambot.sh roles
+sh teambot.sh roles
 ```
+
+Note: the file loses its executable bit on GitHub, so `sh` is the
+reliable form. Running `chmod +x teambot.sh` once, then `./teambot.sh`,
+works too.
 
 ## Web app on localhost
 
