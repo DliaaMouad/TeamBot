@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "teambot"
+version = "0.2.0"
+description = "A customizable AI team for one founder, in the terminal and on the web."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Mouad Dliaa" }]
+
+[project.scripts]
+teambot = "teambot.agent:main"
+
+[tool.setuptools.packages.find]
+include = ["teambot*"]
+
+[tool.setuptools.package-data]
+teambot = ["web/*.html", "roles.yaml"]

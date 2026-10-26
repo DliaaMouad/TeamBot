@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TeamBot</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, sans-serif;
+    background: #FAF9F6; color: #1D1D1F; }
+  header { display: flex; align-items: center; gap: 12px;
+    padding: 14px 20px; border-bottom: 1px solid #e5e2dc; }
+  header h1 { font-size: 20px; margin: 0; }
+  #status { margin-left: auto; font-size: 13px; padding: 4px 10px;
+    border-radius: 20px; background: #eee; }
+  #status.live { background: #a2f543; }
+  #rail { display: flex; gap: 8px; padding: 12px 20px; overflow-x: auto;
+    border-bottom: 1px solid #e5e2dc; }
+  .seat { border: 2px solid transparent; background: none; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 6px 8px; border-radius: 12px; min-width: 74px; }
+  .seat.active { border-color: #1D1D1F; }
+  .face { width: 44px; height: 44px; border-radius: 50%; position: relative;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 700; font-size: 18px; overflow: hidden; }
+  .face img { position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; }
+  .seat span { font-size: 12px; }
+  #profile { margin: 16px 20px 0; padding: 14px 16px; background: #fff;
+    border: 1px solid #e5e2dc; border-radius: 12px; }
+  #profile h2 { margin: 0 0 6px; font-size: 16px; }
+  #profile p { margin: 6px 0; font-size: 14px; line-height: 1.5; }
+  #profile ul { margin: 6px 0; padding-left: 20px; font-size: 14px; }
+  #chat { max-width: 820px; margin: 0 auto; padding: 16px 20px 120px; }
+  .msg { background: #fff; border: 1px solid #e5e2dc; border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 12px; white-space: pre-wrap;
+    line-height: 1.55; font-size: 15px; }
+  .msg .who { font-weight: 700; font-size: 13px; margin-bottom: 6px; }
+  .msg button { margin-top: 8px; font-size: 12px; cursor: pointer; }
+  #composer { position: fixed; left: 0; right: 0; bottom: 0;
+    background: #FAF9F6; border-top: 1px solid #e5e2dc;
+    padding: 12px 20px; display: flex; gap: 8px; align-items: center;
+    flex-wrap: wrap; }
+  #composer input[type=text] { flex: 1; min-width: 220px; padding: 10px;
+    border: 1px solid #ccc; border-radius: 8px; font-size: 15px; }
+  #composer button { padding: 10px 16px; border: none; border-radius: 8px;
+    background: #1D1D1F; color: #fff; font-size: 15px; cursor: pointer; }
+  #composer button.secondary { background: #e5e2dc; color: #1D1D1F; }
+  #composer label { font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>TeamBot</h1>
+  <span id="status">Checking…</span>
+</header>
+<div id="rail"></div>
+<div id="profile" hidden></div>
+<div id="chat"></div>
+<div id="composer">
+  <input type="text" id="task" placeholder="Ask the team…">
+  <button id="send">Send</button>
+  <button id="briefing" class="secondary">Morning Briefing</button>
+  <label><input type="checkbox" id="huddle"> Huddle</label>
+  <label><input type="checkbox" id="demo"> Demo mode</label>
+</div>
+<script>
+const COLORS = { chief: '#1e2a6b', marketing: '#8fd400', operations: '#0f766e',
+  partnerships: '#f97362', fundraising: '#333333', cpo: '#7c3aed',
+  sales: '#f97316', cfo: '#047857', cofounder: '#38bdf8', ceo: '#dc2626' };
+let seats = [], selected = null;
+
+async function loadSeats() {
+  seats = await (await fetch('/api/seats')).json();
+  const rail = document.getElementById('rail');
+  const mkBtn = (key, name, color, avatarPath) => {
+    const b = document.createElement('button');
+    b.className = 'seat'; b.dataset.key = key || '';
+    const face = document.createElement('div');
+    face.className = 'face'; face.style.background = color;
+    face.textContent = name[0];
+    if (avatarPath) {
+      const img = document.createElement('img');
+      img.src = '/' + avatarPath;
+      img.onerror = () => img.remove();
+      face.appendChild(img);
+    }
+    const label = document.createElement('span');
+    label.textContent = name;
+    b.append(face, label);
+    b.onclick = () => select(key);
+    return b;
+  };
+  rail.appendChild(mkBtn('', 'Auto', '#888', ''));
+  seats.forEach(s => rail.appendChild(mkBtn(s.key, s.name, COLORS[s.key] || '#888', s.avatar)));
+  select(null);
+  const st = await (await fetch('/api/status')).json();
+  const badge = document.getElementById('status');
+  if (st.demo_default) { badge.textContent = 'Demo mode'; }
+  else if (st.has_key) { badge.textContent = 'Live'; badge.className = 'live'; }
+  else { badge.textContent = 'No key: set TEAMBOT_API_KEY or use Demo mode'; }
+  document.getElementById('demo').checked = st.demo_default || !st.has_key;
+}
+
+function select(key) {
+  selected = key;
+  document.querySelectorAll('.seat').forEach(b =>
+    b.classList.toggle('active', (b.dataset.key || null) === key));
+  const panel = document.getElementById('profile');
+  const seat = seats.find(s => s.key === key);
+  if (!seat) { panel.hidden = true; return; }
+  panel.hidden = false;
+  panel.innerHTML = '';
+  const h = document.createElement('h2');
+  h.textContent = seat.name + ' (' + seat.title + ')';
+  const role = document.createElement('p');
+  role.textContent = seat.role;
+  const rules = document.createElement('ul');
+  seat.rules.forEach(r => {
+    const li = document.createElement('li'); li.textContent = r;
+    rules.appendChild(li);
+  });
+  const goal = document.createElement('p');
+  goal.innerHTML = '<b>Goal:</b> ' + seat.goal;
+  panel.append(h, role, rules, goal);
+}
+
+function addMsg(who, text) {
+  const div = document.createElement('div');
+  div.className = 'msg';
+  const w = document.createElement('div');
+  w.className = 'who'; w.textContent = who;
+  const t = document.createElement('div');
+  t.textContent = text;
+  const copy = document.createElement('button');
+  copy.textContent = 'Copy';
+  copy.onclick = () => navigator.clipboard.writeText(text);
+  div.append(w, t, copy);
+  document.getElementById('chat').appendChild(div);
+  div.scrollIntoView();
+}
+
+async function send() {
+  const task = document.getElementById('task').value.trim();
+  if (!task) return;
+  document.getElementById('task').value = '';
+  addMsg('You', task);
+  const demo = document.getElementById('demo').checked;
+  const huddle = document.getElementById('huddle').checked;
+  try {
+    if (huddle) {
+      const r = await fetch('/api/huddle', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task, demo }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'request failed');
+      addMsg('Huddle', d.transcript);
+    } else {
+      const r = await fetch('/api/ask', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task, role: selected, demo }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'request failed');
+      addMsg(d.role.name + ' (' + d.role.title + ')', d.answer);
+    }
+  } catch (e) { addMsg('TeamBot stopped', String(e)); }
+}
+
+async function briefing() {
+  const demo = document.getElementById('demo').checked;
+  try {
+    const r = await fetch('/api/briefing', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ demo }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'request failed');
+    d.items.forEach(i => addMsg(i.name + ' (' + i.title + ')', i.answer));
+  } catch (e) { addMsg('TeamBot stopped', String(e)); }
+}
+
+document.getElementById('send').onclick = send;
+document.getElementById('briefing').onclick = briefing;
+document.getElementById('task').addEventListener('keydown', e => {
+  if (e.key === 'Enter') send();
+});
+loadSeats();
+</script>
+</body>
+</html>
